@@ -21,7 +21,7 @@ fn isz main()
 
 	char[lbos::INPUT_BUF_LEN] buf;
 	usz buf_ptr = 0;
-	lbos::print("Enter file to open: ");
+	// lbos::print("Enter file to open: ");
 	while OUTER: (true)
 	{
 		usz diff = lbos::read_input_buf(buf[buf_ptr..]);
@@ -46,7 +46,7 @@ fn isz main()
 		buf_ptr += diff;
 		if (buf_ptr > fs::MAX_FILENAME)
 		{
-			lbos::print(@sprintf("\nFilename too long! max %s chars\n", fs::MAX_FILENAME));
+			//lbos::print(@sprintf("\nFilename too long! max %s chars\n", fs::MAX_FILENAME));
 			return 1;
 		}
 	}
@@ -55,10 +55,10 @@ fn isz main()
 	File? file = fs::open_file((String)buf[:buf_ptr]);
 	if (catch file)
 	{
-		lbos::print("File not found!\n");
+		//lbos::print("File not found!\n");
 		return 1;
 	}
-	lbos::printlns("File size is: ", xtoa((char[10]){}, file.total_size_bytes), " bytes");
+	// lbos::printlns("File size is: ", xtoa((char[10]){}, file.total_size_bytes), " bytes");
 	usz block_count = div_ceil(file.total_size_bytes, BLOCK_SIZE);
 	// lbos::println(xtoa((char[4]){}, block_count));
 	char* data_buf = (char*)lbos::alloc_blocks(block_count);
@@ -69,25 +69,24 @@ fn isz main()
 	char prev;
 	while (try c = file.read_byte())
 	{
-		foreach (inst : InstructionType.values) if (inst.c == c)
+		foreach (inst : InstructionType.values) if (c == inst.c)
 		{
-			if (inst.groupable && prev == c)
+			if (inst.groupable && prev == c && program.items[program.count - 1].count < $typeof((Instruction){}.count).max)
 			{
-				program.items[program.count - 1].count ++;
+				program[^1].count ++;
 			}
 			else
 			{
 				@da_append(program, {inst, 1});
 			}
-			// lbos::printc(c);
 			prev = c;
+			// lbos::printc(c);
 			break;
 		}
 	}
+	// lbos::print("\n");
 
 
-	const MEM_SIZE = 200;
-	char[MEM_SIZE] memory;
 	usz prog_ptr, mem_ptr;
 /*
 	switch (InstructionType.NEXT)
@@ -97,8 +96,9 @@ fn isz main()
 	}*/
 	while (prog_ptr < program.count)
 	{
-		Instruction curr = program.items[prog_ptr];
-		// lbos::printlns("\nexecuting ", curr.type.nameof, " count ", xtoa((char[10]){}, curr.count));
+		Instruction curr = program[prog_ptr];
+		// lbos::printlns((String){curr.type.c}, ":", xtoa((char[10]){}, curr.count));
+		// lbos::printc(curr.type.c); lbos::print(":"); lbos::print(xtoa((char[3]){}, curr.count)); lbos::print(";");
 		switch (curr.type)
 		{
 			case ADD:
@@ -106,17 +106,29 @@ fn isz main()
 			case SUB:
 				memory[mem_ptr] = (char)(memory[mem_ptr] - curr.count);
 			case NEXT:
-				mem_ptr = (mem_ptr + curr.count) % MEM_SIZE;
+				/*if (curr.count + mem_ptr >= MEM_SIZE)
+				{
+					lbos::printlns("overflow, adding ", xtoa((char[10]){}, curr.count), " to ", xtoa((char[5]){}, mem_ptr), " at idx ", xtoa((char[10]){}, prog_ptr), " len is ", xtoa((char[10]){}, program.count));
+					mem_ptr = (mem_ptr + curr.count) % (MEM_SIZE - 1);
+					// lbos::printlns("result ", xtoa(&buf1, mem_ptr));
+				}
+				else*/
+				{
+					mem_ptr = (mem_ptr + curr.count) % (MEM_SIZE - 1);
+				}
+				// if (mem_ptr >= MEM_SIZE - 30) lbos::printlns("ptr: ", xtoa((char[8]){}, mem_ptr));
 			case PREV:
-				mem_ptr = (mem_ptr - curr.count) % MEM_SIZE;
+				//if (curr.count > mem_ptr) lbos::print("underflow\n");
+				mem_ptr = (mem_ptr - curr.count) % (MEM_SIZE - 1);
+				// if (mem_ptr >= MEM_SIZE - 30) lbos::printlns("ptr: ", xtoa((char[8]){}, mem_ptr));
 			case LOOP_START:
 				if (memory[mem_ptr] != 0) break;
 				usz num = 1;
 				do
 				{
 					prog_ptr ++;
-					if (program.items[prog_ptr].type == LOOP_START) { num++; }
-					else if (program.items[prog_ptr].type == LOOP_END) { num --; }
+					if (program[prog_ptr].type == LOOP_START) { num++; }
+					else if (program[prog_ptr].type == LOOP_END) { num --; }
 				} while (num != 0);
 			case LOOP_END:
 				if (memory[mem_ptr] == 0) break;
@@ -124,62 +136,87 @@ fn isz main()
 				do
 				{
 					prog_ptr --;
-					if (program.items[prog_ptr].type == LOOP_END) { num++; }
-					else if (program.items[prog_ptr].type == LOOP_START) { num --; }
+					if (program[prog_ptr].type == LOOP_END) { num++; }
+					else if (program[prog_ptr].type == LOOP_START) { num --; }
 				} while (num != 0);
 			case READ:
 				break;
 			case PRINT:
 				// lbos::print(xtoa((char[3]){}, memory[mem_ptr]));
-				lbos::printc(memory[mem_ptr]);
+				/*if (memory[mem_ptr] < 127) */lbos::printc(memory[mem_ptr]);
 		}
 		prog_ptr ++;
 	}
 	return 0;
 }
 
+const usz MEM_SIZE = 200;
+char[MEM_SIZE] memory;
+
 macro void @da_append(#da, #item)
 {
-	if (#da.items.len == 0)
+	var $Type = $typeof(#da.items);
+	const ITEM_SIZE = $Type.inner.sizeof;
+	if (#da.capacity == 0)
 	{
 		// lbos::print("initialising!\n");
-		#da.items = (($typeof(#da.items.ptr))lbos::alloc_blocks(1))[:BLOCK_SIZE / $typeof(#da.items.ptr).inner.sizeof];
+		#da.items = ($Type)lbos::alloc_blocks(1);
+		#da.capacity = BLOCK_SIZE / ITEM_SIZE;
 		// lbos::printlns("initial len: ", xtoa((char[5]){}, #da.items.len));
 	}
-	else if (#da.count == #da.items.len)
+	else if (#da.count == #da.capacity)
 	{
-		// lbos::print("resizing!\n");
-		usz new_capacity = #da.items.len * 2;
+		// lbos::printlns("resizing at idx ", xtoa((char[5]){}, #da.count));
+		usz new_capacity = #da.capacity * 2; // #da.capacity + #da.capacity / 2; // * 1.5
 		usz new_block_count = new_capacity.div_ceil(BLOCK_SIZE);
-		var new_ptr = ($typeof(#da.items.ptr))lbos::alloc_blocks(new_block_count);
-		@noalias_copy(new_ptr, #da.items.ptr, #da.items.len);
-		char[20] buf;
-		// lbos::printlns("Old len: ", xtoa(&buf, #da.items.len), ", New len: ", xtoa(&buf, new_capacity));
+		var new_ptr = ($Type)lbos::alloc_blocks(new_block_count);
+		new_ptr[:#da.count] = #da.items[:#da.count];
 
-		lbos::free_blocks((MemoryBlock)#da.items.ptr, #da.items.len.div_ceil(BLOCK_SIZE));
-		#da.items = new_ptr[:new_capacity];
+		// lbos::printlns("Old len: ", xtoa((char[7]){}, #da.capacity), ", New len: ", xtoa((char[7]){}, new_capacity));
+
+		lbos::free_blocks((MemoryBlock)#da.items, (#da.capacity * ITEM_SIZE).div_ceil(BLOCK_SIZE));
+		#da.items = new_ptr;
+		#da.capacity = new_capacity;
 	}
-	// lbos::print("appending!\n");
 	#da.items[#da.count++] = #item;
 }
 
 // TODO: this is an awful hack, maybe @noalias doesn't work correctly on slices? if so that's probably a bug
-macro void @noalias_copy(#a @noalias, #b @noalias, #len) => memcpy((char*)#a, (char*)#b, #len * $typeof(#a).inner.sizeof) @noinline;// #a[:#len] = #b[:#len];
+// macro void @noalias_copy(#a @noalias, #b @noalias, #len) => memcpy((char*)#a, (char*)#b, #len * $typeof(#a).inner.sizeof) @noinline;// #a[:#len] = #b[:#len];
 
 struct Instructions
 {
-	Instruction[] items;
+	Instruction*/*[]*/ items;
+	// usz blocks;
 	usz count;
+	usz capacity;
 }
 
+macro usz Instructions.@len(#self) @operator(len) => #self.count;
+<* @require #idx < #self.@len() *>
+macro Instruction Instructions.@get(#self, usz #idx) @operator([]) => #self.items[#idx];
+<* @require #idx < self.@len() *>
+macro Instruction* Instructions.@get_ref(&self, usz #idx) @operator(&[]) => &self.items[#idx];
+<* @require #idx < #self.@len() *>
+macro void Instructions.@set(#self, usz #idx, Instruction #val) @operator([]=) => #self.items[#idx] = #val;
+
+// TODO: this causes the error `undefined reference to .tempglobal`
+/*
+<* @require #idx < #self.@len() *>
+macro Instruction* Instructions.@get_ref(#self, usz #idx) @operator(&[]) => #self.items[#idx];
+*/
+
+
 // epic
-struct Instruction @packed
+struct Instruction // @packed
 {
 	InstructionType type;
-	bitstruct : char[3]
+	ushort count;
+	// char count;
+	/*bitstruct : char[3]
 	{
 		uint count : 0..23;
-	}
+	}*/
 }
 
 enum InstructionType : char (char c, bool groupable)
@@ -203,6 +240,9 @@ fn void memcpy(char* dst, char* src, usz len) @extern("memcpy") @nostrip
 		*(dst++) = *(src++);
 	} while (--len);
 }
+
+// Safety :)
+fn void memmove(char* dst @noalias, char* src @noalias, usz len) @extern("memmove") @nostrip => memcpy(dst, src, len);
 
 <*
  @param [&out] dst

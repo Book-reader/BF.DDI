@@ -33,10 +33,10 @@ fn String Record.get_name(&self)
 
 	if (try i = idx)
 	{
-		liblbos::printlns("found idx ", xtoa((char[3]){}, i));
+		// liblbos::printlns("found idx ", xtoa((char[3]){}, i));
 		return (String)self.name[:i];
 	}
-	liblbos::print("could not find '\\0'\n");
+	// liblbos::print("could not find '\\0'\n");
 	return (String)self.name[..];
 //	(String)self.name[:((String)&self.name).index_of_char('\0') ?? self.name.len];
 }
@@ -76,7 +76,7 @@ fn File? open_file(String name)
 	// Environment* env = liblbos::get_env_ptr();
 
 	ktask::fs_open_dir(&fs, &dir, /*env.current_directory_path*/"/")!;
-	liblbos::printlns("Opening file ", name);
+	// liblbos::printlns("Opening file ", name);
 	Record file_record;
 	do
 	{
@@ -89,7 +89,7 @@ fn File? open_file(String name)
 				//liblbos::print("ERR\n");
 				return UNKNOWN_ERR?;
 		}
-		liblbos::printlns("File name: '", file_record.get_name(), "'");
+		// liblbos::printlns("File name: '", file_record.get_name(), "'");
 	} while (file_record.get_name() != name);
 	if (file_record.type != FILE) return NOT_FILE?;
 

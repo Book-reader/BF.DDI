@@ -43,9 +43,9 @@ fn isz main()
 			else { lbos::printc(c); }
 		}
 		buf_ptr += diff;
-		if (buf_ptr >= lbos::MAX_FILENAME)
+		if (buf_ptr > fs::MAX_FILENAME)
 		{
-			lbos::print(@sprintf("\nFilename too long! max %s chars\n", lbos::MAX_FILENAME));
+			lbos::print(@sprintf("\nFilename too long! max %s chars\n", fs::MAX_FILENAME));
 			return 1;
 		}
 	}
@@ -57,6 +57,8 @@ fn isz main()
 		lbos::print("File not found!\n");
 		return 1;
 	}
+	lbos::printlns("File size is: ", xtoa((char[40]){}, file.total_size_bytes), " bytes");
+	while (try c = file.read_byte()) lbos::printc(c);
 	return 0;
 }
 

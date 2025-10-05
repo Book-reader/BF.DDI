@@ -51,7 +51,6 @@ const Colour GREEN @builtin = {255, 0, 255, 0};
 const Colour BLUE @builtin = {255, 0, 0, 255};
 
 const INPUT_BUF_LEN = 32;
-const MAX_FILENAME = 11;
 const KEY_BACKSPACE = 0x7f;
 
 <*

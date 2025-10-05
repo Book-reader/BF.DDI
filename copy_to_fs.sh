@@ -9,6 +9,7 @@ mount "${storage_device}" mount
 
 echo "COPYING..."
 cp -v build/BF.DDI mount
+cp -v ./resources/* mount
 
 echo "UNMOUNTING..."
 umount "${storage_device}"

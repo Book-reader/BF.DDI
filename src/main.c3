@@ -157,28 +157,73 @@ macro void @da_append(#da, #item)
 {
 	var $Type = $typeof(#da.items);
 	const ITEM_SIZE = $Type.inner.sizeof;
-	if (#da.capacity == 0)
+	if (#da.blocks == 0)
+	{
+		#da.items = ($Type)lbos::alloc_blocks(1);
+		#da.blocks = 1;
+		//#da.capacity = BLOCK_SIZE / ITEM_SIZE;
+		#da.items[:#da.blocks * BLOCK_SIZE / ITEM_SIZE] = {};
+	}
+/*	else if (#da.count >= #da.capacity)
+	{
+		usz new_blocks = #da.blocks * 2;
+		usz new_capacity = #da.blocks * BLOCK_SIZE / ITEM_SIZE;
+		new_ptr[:#da.blocks * BLOCK_SIZE / ITEM_SIZE] = #da.items[:#da.blocks * BLOCK_SIZE / ITEM_SIZE];
+	}*/
+	else if (#da.count * ITEM_SIZE > #da.blocks * BLOCK_SIZE / ITEM_SIZE)
+	{
+		usz new_blocks = #da.blocks + 1;
+		var new_ptr = ($Type)lbos::alloc_blocks(new_blocks);
+		new_ptr[:#da.blocks * BLOCK_SIZE / ITEM_SIZE] = #da.items[:#da.blocks * BLOCK_SIZE / ITEM_SIZE];
+
+		lbos::free_blocks((MemoryBlock)#da.items, #da.blocks);
+		// lbos::printlns("Old len: ", xtoa((char[7]){}, #da.blocks * BLOCK_SIZE / ITEM_SIZE), ", New len: ", xtoa((char[7]){}, new_blocks * BLOCK_SIZE / ITEM_SIZE));
+
+		#da.items = new_ptr;
+		#da.blocks = new_blocks;
+
+/*		foreach (item : #da)
+		{
+			lbos::printc(item.type.c);
+			lbos::print(" ");
+			lbos::println(xtoa((char[10]){}, item.count));
+		}*/
+	}
+	#da.items[#da.count++] = #item;
+
+/*	if (#da.capacity == 0)
 	{
 		// lbos::print("initialising!\n");
 		#da.items = ($Type)lbos::alloc_blocks(1);
 		#da.capacity = BLOCK_SIZE / ITEM_SIZE;
+		// #da.blocks = 1;
+		#da.items[:#da.capacity] = {};
 		// lbos::printlns("initial len: ", xtoa((char[5]){}, #da.items.len));
 	}
 	else if (#da.count == #da.capacity)
 	{
 		// lbos::printlns("resizing at idx ", xtoa((char[5]){}, #da.count));
 		usz new_capacity = #da.capacity * 2; // #da.capacity + #da.capacity / 2; // * 1.5
-		usz new_block_count = new_capacity.div_ceil(BLOCK_SIZE);
+		usz new_block_count = (new_capacity * ITEM_SIZE).div_ceil(BLOCK_SIZE);
 		var new_ptr = ($Type)lbos::alloc_blocks(new_block_count);
+		new_ptr[:new_capacity] = {};
 		new_ptr[:#da.count] = #da.items[:#da.count];
 
 		// lbos::printlns("Old len: ", xtoa((char[7]){}, #da.capacity), ", New len: ", xtoa((char[7]){}, new_capacity));
 
-		lbos::free_blocks((MemoryBlock)#da.items, (#da.capacity * ITEM_SIZE).div_ceil(BLOCK_SIZE));
+		defer lbos::free_blocks((MemoryBlock)#da.items, (#da.capacity * ITEM_SIZE).div_ceil(BLOCK_SIZE));
 		#da.items = new_ptr;
 		#da.capacity = new_capacity;
+
+		foreach (item : #da)
+		{
+			lbos::printc(item.type.c);
+			lbos::print(" ");
+			lbos::println(xtoa((char[10]){}, item.count));
+//			lbos::printlns();
+		}
 	}
-	#da.items[#da.count++] = #item;
+	#da.items[#da.count++] = #item;*/
 }
 
 // TODO: this is an awful hack, maybe @noalias doesn't work correctly on slices? if so that's probably a bug
@@ -187,9 +232,9 @@ macro void @da_append(#da, #item)
 struct Instructions
 {
 	Instruction*/*[]*/ items;
-	// usz blocks;
 	usz count;
-	usz capacity;
+	// usz capacity;
+	usz blocks;
 }
 
 macro usz Instructions.@len(#self) @operator(len) => #self.count;
@@ -211,7 +256,7 @@ macro Instruction* Instructions.@get_ref(#self, usz #idx) @operator(&[]) => #sel
 struct Instruction // @packed
 {
 	InstructionType type;
-	ushort count;
+	// ushort count;
 	// char count;
 	/*bitstruct : char[3]
 	{

@@ -41,7 +41,7 @@ fn String Record.get_name(&self)
 //	(String)self.name[:((String)&self.name).index_of_char('\0') ?? self.name.len];
 }
 
-fn usz? index_of_char(char[] str, char c)
+macro usz? index_of_char(char[] str, char c)
 {
 	foreach (i, ch : str)
 	{

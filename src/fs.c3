@@ -26,7 +26,7 @@ struct Record
 	uint total_size_bytes;
 }
 
-fn String Record.get_name(&self)
+macro String Record.get_name(&self)
 {
 	usz? idx = index_of_char(&self.name, 0);
 
@@ -58,7 +58,7 @@ fn /*FileSystem*/void? init()
 <*
  @require name.len > 0
 *>
-fn File? open_file(String name)
+macro File? open_file(String name)
 {
 	if (name[0] == '/')
 	{
@@ -94,7 +94,7 @@ struct File
 	usz total_size_bytes;
 }
 
-fn char? File.read_byte(&self)
+macro char? File.read_byte(&self)
 {
 	char c;
 	ktask::fs_read_file(&fs, &self.reader, (&c)[:1])!;

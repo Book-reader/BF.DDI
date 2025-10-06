@@ -57,14 +57,8 @@ fn isz main()
 		lbos::print("File not found!\n");
 		return 1;
 	}
-	// lbos::printlns("File size is: ", xtoa((char[10]){}, file.total_size_bytes), " bytes");
-	usz block_count = div_ceil(file.total_size_bytes, BLOCK_SIZE);
-	char* data_buf = (char*)lbos::alloc_blocks(block_count);
-	defer lbos::free_blocks((MemoryBlock)data_buf, block_count);
 
-	// char prev_prev;
 	Instructions program;
-	// char prev;
 	InstructionType prev;
 	ushort prev_repeats;
 	while (try c = file.read_byte())
@@ -127,9 +121,9 @@ fn isz main()
 			case SUB:
 				memory[mem_ptr] = (char)(memory[mem_ptr] - curr.repeats());
 			case NEXT:
-				mem_ptr = (mem_ptr + curr.repeats()) % (MEM_SIZE - 1);
+				mem_ptr = (mem_ptr + curr.repeats()) % MEM_SIZE;
 			case PREV:
-				mem_ptr = (mem_ptr - curr.repeats()) % (MEM_SIZE - 1);
+				mem_ptr = (mem_ptr - curr.repeats()) % MEM_SIZE;
 			case LOOP_START:
 				if (memory[mem_ptr] != 0) break;
 				usz num = 1;
@@ -149,7 +143,11 @@ fn isz main()
 					else if (curr.type == LOOP_START) { num --; }
 				} while (num != 0);
 			case READ:
-				break;
+				char c;
+				while (lbos::read_input_buf((&c)[:1]) == 0);
+				if (c == '\r') { memory[mem_ptr] = '\n'; }
+				else { memory[mem_ptr] = c; }
+				nextcase;
 			case PRINT:
 				lbos::printc(memory[mem_ptr]);
 		}
@@ -158,7 +156,7 @@ fn isz main()
 	return 0;
 }
 
-const usz MEM_SIZE = 200;
+const usz MEM_SIZE = 1000;
 char[MEM_SIZE] memory;
 
 macro ushort Instruction.repeats(&self) => self.large ? ((InstructionGrouped*)self).count : self.count;
@@ -267,7 +265,7 @@ fn void memcpy(char* dst, char* src, usz len) @extern("memcpy") @nostrip
 // Safety :)
 fn void memmove(char* dst @noalias, char* src @noalias, usz len) @extern("memmove") @nostrip => memcpy(dst, src, len);
 
-<*
+/*<*
  @param [&out] dst
 *>
 fn void memset(char* dst, int c, usz len) @extern("memset") @nostrip
@@ -276,9 +274,9 @@ fn void memset(char* dst, int c, usz len) @extern("memset") @nostrip
 	{
 		*(dst++) = (char)c;
 	} while (--len);
-}
+}*/
 
-fn usz usz.div_ceil(self, usz other) => div_ceil(self, other);
+macro usz usz.div_ceil(self, usz other) => div_ceil(self, other);
 
 macro div_ceil(a, b) => a / b + (a % b == 0 ? 0 : 1);
 

@@ -71,65 +71,88 @@ fn isz main()
 	{
 		foreach (inst : InstructionType.values) if (c == inst.c)
 		{
-			if (inst.groupable && prev == c && program.items[program.count - 1].count < $typeof((Instruction){}.count).max)
+			if (inst.groupable)
 			{
-				program[^1].count ++;
+				if (prev == c && program.@last(InstructionCountable).count < CountType.max)
+				{
+					program.@last(InstructionCountable).count ++;
+				}
+				else
+				{
+					program.@append((InstructionCountable){{inst}, 1});
+				}
 			}
 			else
 			{
-				@da_append(program, {inst, 1});
+				program.@append((Instruction){inst});
 			}
 			prev = c;
 			// lbos::printc(c);
-			break;
+			continue;
 		}
 	}
+	defer if (program.blocks > 0) lbos::free_blocks((MemoryBlock)program.items, program.blocks);
 
 
-	usz prog_ptr, mem_ptr;
+	// lbos::println(xtoa((char[20]){}, program.bytes));
+	// lbos::println(xtoa((char[20]){}, program.idx));
+	usz /*prog_ptr, */mem_ptr;
 /*
 	switch (InstructionType.NEXT)
 	{
 		case NEXT:
 			
 	}*/
-	while (prog_ptr < program.count)
+	while (program.idx < program.bytes)
 	{
-		Instruction curr = program[prog_ptr];
+		Instruction* curr = program.@curr();
+		/*lbos::print({curr.type.c, ' '});
+		if (curr.type.groupable)
+		{
+			lbos::print(xtoa((char[20]){}, ((InstructionCountable*)curr).count));
+		}
+		lbos::print("\n");
+		// lbos::println(xtoa((char[20]){}, program.idx));
+		if (curr.type == PRINT)
+		{
+			lbos::print("PRINT\n");
+		}*/
+		
 		switch (curr.type)
 		{
 			case ADD:
-				memory[mem_ptr] = (char)(memory[mem_ptr] + curr.count);
+				memory[mem_ptr] = (char)(memory[mem_ptr] + ((InstructionCountable*)curr).count);
 			case SUB:
-				memory[mem_ptr] = (char)(memory[mem_ptr] - curr.count);
+				memory[mem_ptr] = (char)(memory[mem_ptr] - ((InstructionCountable*)curr).count);
 			case NEXT:
-				mem_ptr = (mem_ptr + curr.count) % (MEM_SIZE - 1);
+				mem_ptr = (mem_ptr + ((InstructionCountable*)curr).count) % (MEM_SIZE - 1);
 			case PREV:
-				mem_ptr = (mem_ptr - curr.count) % (MEM_SIZE - 1);
+				mem_ptr = (mem_ptr - ((InstructionCountable*)curr).count) % (MEM_SIZE - 1);
 			case LOOP_START:
 				if (memory[mem_ptr] != 0) break;
 				usz num = 1;
 				do
 				{
-					prog_ptr ++;
-					if (program[prog_ptr].type == LOOP_START) { num++; }
-					else if (program[prog_ptr].type == LOOP_END) { num --; }
+					curr = program.@next();
+					if (curr.type == LOOP_START) { num++; }
+					else if (curr.type == LOOP_END) { num --; }
 				} while (num != 0);
 			case LOOP_END:
 				if (memory[mem_ptr] == 0) break;
 				usz num = 1;
 				do
 				{
-					prog_ptr --;
-					if (program[prog_ptr].type == LOOP_END) { num++; }
-					else if (program[prog_ptr].type == LOOP_START) { num --; }
+					curr = program.@prev();
+					if (curr.type == LOOP_END) { num++; }
+					else if (curr.type == LOOP_START) { num --; }
 				} while (num != 0);
 			case READ:
 				break;
 			case PRINT:
 				lbos::printc(memory[mem_ptr]);
 		}
-		prog_ptr ++;
+		program.@next();
+		// prog_ptr ++;
 	}
 	return 0;
 }
@@ -137,46 +160,76 @@ fn isz main()
 const usz MEM_SIZE = 200;
 char[MEM_SIZE] memory;
 
-macro void @da_append(#da, #item)
+/*macro void @da_append(#da, #item)
 {
-	var $Type = $typeof(#da.items);
-	const ITEM_SIZE = $Type.inner.sizeof;
-	if (#da.blocks == 0)
-	{
-		#da.items = ($Type)lbos::alloc_blocks(1);
-		#da.blocks = 1;
-		#da.items[:#da.blocks * BLOCK_SIZE / ITEM_SIZE] = {};
-	}
-	else if (#da.count * ITEM_SIZE > #da.blocks * BLOCK_SIZE / ITEM_SIZE)
-	{
-		usz new_blocks = #da.blocks + 1;
-		var new_ptr = ($Type)lbos::alloc_blocks(new_blocks);
-		new_ptr[:#da.blocks * BLOCK_SIZE / ITEM_SIZE] = #da.items[:#da.blocks * BLOCK_SIZE / ITEM_SIZE];
-		lbos::free_blocks((MemoryBlock)#da.items, #da.blocks);
-		#da.items = new_ptr;
-		#da.blocks = new_blocks;
-	}
-	#da.items[#da.count++] = #item;
-}
+}*/
 
 // TODO: this is an awful hack, maybe @noalias doesn't work correctly on slices? if so that's probably a bug
 // macro void @noalias_copy(#a @noalias, #b @noalias, #len) => memcpy((char*)#a, (char*)#b, #len * $typeof(#a).inner.sizeof) @noinline;// #a[:#len] = #b[:#len];
 
 struct Instructions
 {
-	Instruction*/*[]*/ items;
-	usz count;
-	// usz capacity;
+	char*/*[]*/ items;
+	// usz count;
+	usz bytes;
+	usz idx;
 	usz blocks;
 }
 
-macro usz Instructions.@len(#self) @operator(len) => #self.count;
-<* @require #idx < #self.@len() *>
+macro Instructions.@append(#self, #val)
+{
+	#self.append_bytes($sizeof(#val), (char*)@addr(#val));
+}
+
+fn void Instructions.append_bytes(&self, usz len, char* dat)
+{
+	// const ITEM_SIZE = Instruction.sizeof;
+	if (self.blocks == 0)
+	{
+		self.items = (char*)lbos::alloc_blocks(1);
+		self.blocks = 1;
+		self.items[:self.blocks * BLOCK_SIZE] = {};
+	}
+	else if (self.bytes + len >= self.blocks * BLOCK_SIZE)
+	{
+		usz new_blocks = self.blocks + 1;
+		char* new_ptr = (char*)lbos::alloc_blocks(new_blocks);
+		new_ptr[:self.blocks * BLOCK_SIZE] = self.items[:self.blocks * BLOCK_SIZE];
+		lbos::free_blocks((MemoryBlock)self.items, self.blocks);
+		self.items = new_ptr;
+		self.blocks = new_blocks;
+	}
+	((char*)self.items + self.bytes)[:len] = dat[:len];
+	self.bytes += len;
+}
+
+// macro usz Instructions.@len(#self) @operator(len) => #self.count;
+/*<* @require #idx < #self.@len() *>
 macro Instruction Instructions.@get(#self, usz #idx) @operator([]) => #self.items[#idx];
 <* @require #idx < self.@len() *>
 macro Instruction* Instructions.@get_ref(&self, usz #idx) @operator(&[]) => &self.items[#idx];
 <* @require #idx < #self.@len() *>
 macro void Instructions.@set(#self, usz #idx, Instruction #val) @operator([]=) => #self.items[#idx] = #val;
+*/
+macro Instruction* Instructions.@next(#self)
+{
+	#self.idx += Instruction.sizeof + #self.@curr().type.group_size;
+	return (Instruction*)(#self.items + #self.idx);
+}
+
+macro Instruction* Instructions.@prev(#self)
+{
+	#self.idx -= Instruction.sizeof + #self.@curr().type.group_size;
+	return (Instruction*)(#self.items + #self.idx);
+}
+
+macro Instruction* Instructions.@curr(#self)
+{
+	return (Instruction*)(#self.items + #self.idx);
+}
+
+
+macro Instructions.@last(#self, $Type) => ($Type*)((#self.items + #self.bytes) - $Type.sizeof);
 
 // TODO: this causes the error `undefined reference to .tempglobal`
 /*
@@ -184,8 +237,20 @@ macro void Instructions.@set(#self, usz #idx, Instruction #val) @operator([]=) =
 macro Instruction* Instructions.@get_ref(#self, usz #idx) @operator(&[]) => #self.items[#idx];
 */
 
+struct Instruction
+{
+	InstructionType type;
+}
 
-// epic
+alias CountType = ushort;
+// TODO: split up even further using a 1 bit bool in a bitstruct that says whether there is 1 or 2 bytes of repeats
+struct InstructionCountable @packed// Base
+{
+	inline Instruction base;
+	CountType count;
+}
+
+/*// epic
 struct Instruction // @packed
 {
 	InstructionType type;
@@ -195,18 +260,18 @@ struct Instruction // @packed
 	{
 		uint count : 0..23;
 	}*/
-}
+}*/
 
-enum InstructionType : char (char c, bool groupable)
+enum InstructionType : char (char c, bool groupable, usz group_size)
 {
-	NEXT = { '>', true },
-	PREV = { '<', true },
-	ADD = { '+', true },
-	SUB = { '-', true },
-	PRINT = { '.', false }, // TODO: implement repeats for these 2
-	READ = { ',', false },  // ^
-	LOOP_START = { '[', false },
-	LOOP_END = { ']', false },
+	NEXT       = { '>', true,  CountType.sizeof },
+	PREV       = { '<', true,  CountType.sizeof },
+	ADD        = { '+', true,  CountType.sizeof },
+	SUB        = { '-', true,  CountType.sizeof },
+	PRINT      = { '.', false, 0 }, // TODO: implement repeats for these 2
+	READ       = { ',', false, 0 },  // ^
+	LOOP_START = { '[', false, 0 },
+	LOOP_END   = { ']', false, 0 },
 	// NEXT = { 0xff, false },
 }
 

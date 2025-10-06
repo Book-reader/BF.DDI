@@ -21,7 +21,7 @@ fn isz main()
 
 	char[lbos::INPUT_BUF_LEN] buf;
 	usz buf_ptr = 0;
-	// lbos::print("Enter file to open: ");
+	lbos::print("Enter brainfuck file to open (must end in .BFF): ");
 	while OUTER: (true)
 	{
 		usz diff = lbos::read_input_buf(buf[buf_ptr..]);
@@ -46,21 +46,19 @@ fn isz main()
 		buf_ptr += diff;
 		if (buf_ptr > fs::MAX_FILENAME)
 		{
-			//lbos::print(@sprintf("\nFilename too long! max %s chars\n", fs::MAX_FILENAME));
+			lbos::print(@sprintf("\nFilename too long! max %s chars\n", fs::MAX_FILENAME));
 			return 1;
 		}
 	}
 
-	// lbos::printlns("\nOpening file '", (String)buf[:buf_ptr], "'\n");
 	File? file = fs::open_file((String)buf[:buf_ptr]);
 	if (catch file)
 	{
-		//lbos::print("File not found!\n");
+		lbos::print("File not found!\n");
 		return 1;
 	}
 	// lbos::printlns("File size is: ", xtoa((char[10]){}, file.total_size_bytes), " bytes");
 	usz block_count = div_ceil(file.total_size_bytes, BLOCK_SIZE);
-	// lbos::println(xtoa((char[4]){}, block_count));
 	char* data_buf = (char*)lbos::alloc_blocks(block_count);
 	defer lbos::free_blocks((MemoryBlock)data_buf, block_count);
 
@@ -111,38 +109,16 @@ fn isz main()
 				program.@append((Instruction){inst, false, 1});
 			}
 			prev = inst;
-			// lbos::printc(c);
 			continue;
 		}
 	}
 	defer if (program.blocks > 0) lbos::free_blocks((MemoryBlock)program.items, program.blocks);
 
+	usz mem_ptr;
 
-	// lbos::println(xtoa((char[20]){}, program.bytes));
-	// lbos::println(xtoa((char[20]){}, program.idx));
-	usz /*prog_ptr, */mem_ptr;
-/*
-	switch (InstructionType.NEXT)
-	{
-		case NEXT:
-			
-	}*/
 	while (program.idx < program.bytes)
 	{
 		Instruction* curr = program.@curr();
-		// lbos::print(xtoa((char[3]){}, curr.type.ordinal));
-		// lbos::print(" ");
-/*		lbos::print({curr.type.c, ' '});
-		if (curr.type.groupable)
-		{
-			lbos::print(xtoa((char[20]){}, curr.repeats()));
-		}
-		lbos::print("\n");*/
-		// lbos::println(xtoa((char[20]){}, program.idx));
-		/*if (curr.type == PRINT)
-		{
-			lbos::print("PRINT\n");
-		}*/
 
 		switch (curr.type)
 		{
@@ -178,7 +154,6 @@ fn isz main()
 				lbos::printc(memory[mem_ptr]);
 		}
 		program.@next();
-		// prog_ptr ++;
 	}
 	return 0;
 }
@@ -186,19 +161,11 @@ fn isz main()
 const usz MEM_SIZE = 200;
 char[MEM_SIZE] memory;
 
-/*macro void @da_append(#da, #item)
-{
-}*/
-
-// TODO: this is an awful hack, maybe @noalias doesn't work correctly on slices? if so that's probably a bug
-// macro void @noalias_copy(#a @noalias, #b @noalias, #len) => memcpy((char*)#a, (char*)#b, #len * $typeof(#a).inner.sizeof) @noinline;// #a[:#len] = #b[:#len];
-
 macro ushort Instruction.repeats(&self) => self.large ? ((InstructionGrouped*)self).count : self.count;
 
 struct Instructions
 {
-	char*/*[]*/ items;
-	// usz count;
+	char* items;
 	usz bytes;
 	usz idx;
 	usz blocks;
@@ -211,7 +178,6 @@ macro Instructions.@append(#self, #val)
 
 fn void Instructions.append_bytes(&self, usz len, char* dat)
 {
-	// const ITEM_SIZE = Instruction.sizeof;
 	if (self.blocks == 0)
 	{
 		self.items = (char*)lbos::alloc_blocks(1);
@@ -231,14 +197,6 @@ fn void Instructions.append_bytes(&self, usz len, char* dat)
 	self.bytes += len;
 }
 
-// macro usz Instructions.@len(#self) @operator(len) => #self.count;
-/*<* @require #idx < #self.@len() *>
-macro Instruction Instructions.@get(#self, usz #idx) @operator([]) => #self.items[#idx];
-<* @require #idx < self.@len() *>
-macro Instruction* Instructions.@get_ref(&self, usz #idx) @operator(&[]) => &self.items[#idx];
-<* @require #idx < #self.@len() *>
-macro void Instructions.@set(#self, usz #idx, Instruction #val) @operator([]=) => #self.items[#idx] = #val;
-*/
 macro Instruction* Instructions.@next(#self)
 {
 	#self.idx += /*#self.@curr().type.groupable && */#self.@curr().large ? InstructionGrouped.sizeof : Instruction.sizeof;
@@ -256,10 +214,7 @@ macro Instruction* Instructions.@curr(#self)
 	return (Instruction*)(#self.items + #self.idx);
 }
 
-
-// macro Instructions.@last(#self, $Type) => ($Type*)((#self.items + #self.bytes) - $Type.sizeof);
-
-// TODO: this causes the error `undefined reference to .tempglobal`
+// TODO: this causes the error `undefined reference to .tempglobal` when used
 /*
 <* @require #idx < #self.@len() *>
 macro Instruction* Instructions.@get_ref(#self, usz #idx) @operator(&[]) => #self.items[#idx];
@@ -267,7 +222,6 @@ macro Instruction* Instructions.@get_ref(#self, usz #idx) @operator(&[]) => #sel
 
 
 // TODO: making these `@bigendian` causes a compiler assert (with this as char and InstructionGrouped as a ushort)
-// TODO: don't group things unless they have a repeat by adding a bool to `Instruction`
 bitstruct Instruction : char // @bigendian
 {
 	InstructionType type : 0..2;
@@ -275,14 +229,12 @@ bitstruct Instruction : char // @bigendian
 	ushort count : 4..7;
 }
 
-// TODO: split up even further using a 1 bit bool in a bitstruct that says whether there is 1 or 2 bytes of repeats
-bitstruct InstructionGrouped : ushort @align(1) // @littleendian
+bitstruct InstructionGrouped : ushort @align(1)
 {
 	InstructionType type : 0..2;
 	bool large : 3;
 	ushort count : 4..15;
 }
-// const MAX_GROUP = (1 << 13) - 1;
 const MAX_SMALL_GROUP = (1 << 4) - 1;
 const MAX_LARGE_GROUP = (1 << 12) - 1;
 $assert $defined((InstructionGrouped){.count = MAX_LARGE_GROUP}); // && !$defined((InstructionGrouped){.count = MAX_LARGE_GROUP + 1});
@@ -291,18 +243,6 @@ $assert $defined((Instruction){.count = MAX_SMALL_GROUP}); // && !$defined((Inst
 // TODO: this segfaults the compiler:
 // $assert ((InstructionGrouped)ushort.max).count == MAX_GROUP;
 
-
-/*// epic
-struct Instruction // @packed
-{
-	InstructionType type;
-	// ushort count;
-	char count;
-	/*bitstruct : char[3]
-	{
-		uint count : 0..23;
-	}*/
-}*/
 enum InstructionType : char (char c, bool groupable)
 {
 	NEXT       = { '>', true  },
@@ -313,7 +253,6 @@ enum InstructionType : char (char c, bool groupable)
 	READ       = { ',', false },  // ^
 	LOOP_START = { '[', false },
 	LOOP_END   = { ']', false },
-	// NEXT = { 0xff, false },
 }
 
 fn void memcpy(char* dst, char* src, usz len) @extern("memcpy") @nostrip
@@ -343,7 +282,6 @@ fn usz usz.div_ceil(self, usz other) => div_ceil(self, other);
 
 macro div_ceil(a, b) => a / b + (a % b == 0 ? 0 : 1);
 
-// module std::core::builtin;
 module common; // I cannot use std::core::builtin because with `--emit-stdlib=no` it deletes the function impls
 import std::math;
 import liblbos;
@@ -368,11 +306,6 @@ fn String xtoa(char[] buf, usz num) @builtin
 		num /= 10;
 	}
 	// if (neg) buf[len++] = '-';
-	/*foreach (i, c : buf[:len / 2])
-	{
-		buf[i] = buf[len - i - 1];
-		buf[len - i - 1] = c;
-	}*/
 	for (usz j = 0, usz k = len - 1; j < k; j++, k--)
 	{
 		char temp = buf[j];

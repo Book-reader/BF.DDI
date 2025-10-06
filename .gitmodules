@@ -1,0 +1,3 @@
+[submodule "lib/LIBLBOS.c3l"]
+	path = lib/LIBLBOS.c3l
+	url = https://git.st.org.nz/me/LIBLBOS.c3l.git

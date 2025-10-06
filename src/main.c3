@@ -1,8 +1,9 @@
 module brainfuck;
-import liblbos;
+import lbos::io;
+import lbos::fs;
+import lbos::syscall;
+import lbos::mem;
 import common;
-
-alias lbos = module liblbos;
 
 fn isz _start() @extern("_start") @nostrip
 {
@@ -19,34 +20,34 @@ fn isz main()
 {
 	fs::init()!!;
 
-	char[lbos::INPUT_BUF_LEN] buf;
+	char[io::INPUT_BUF_LEN] buf;
 	usz buf_ptr = 0;
-	lbos::print("Enter brainfuck file to open (must end in .BFF): ");
+	io::print("Enter brainfuck file to open (must end in .BFF): ");
 	while OUTER: (true)
 	{
-		usz diff = lbos::read_input_buf(buf[buf_ptr..]);
+		usz diff = syscall::read_input_buf(buf[buf_ptr..]);
 		foreach (c : buf[buf_ptr:diff])
 		{
 			if (c == '\r')
 			{
-				lbos::print("\n");
+				io::print("\n");
 				break OUTER;
 			}
-			else if (c == lbos::KEY_BACKSPACE)
+			else if (c == io::KEY_BACKSPACE)
 			{
 				if (buf_ptr > 0)
 				{
-					lbos::print("\x08 \x08");
+					io::print("\x08 \x08");
 					buf_ptr --;
 				}
 				diff --;
 			}
-			else { lbos::printc(c); }
+			else { io::printc(c); }
 		}
 		buf_ptr += diff;
 		if (buf_ptr > fs::MAX_FILENAME)
 		{
-			lbos::print(@sprintf("\nFilename too long! max %s chars\n", fs::MAX_FILENAME));
+			io::print(@sprintf("\nFilename too long! max %s chars\n", fs::MAX_FILENAME));
 			return 1;
 		}
 	}
@@ -54,7 +55,7 @@ fn isz main()
 	File? file = fs::open_file((String)buf[:buf_ptr]);
 	if (catch file)
 	{
-		lbos::print("File not found!\n");
+		io::print("File not found!\n");
 		return 1;
 	}
 
@@ -106,7 +107,7 @@ fn isz main()
 			continue;
 		}
 	}
-	defer if (program.blocks > 0) lbos::free_blocks((MemoryBlock)program.items, program.blocks);
+	defer if (program.blocks > 0) syscall::free_blocks((MemoryBlock)program.items, program.blocks);
 
 	usz mem_ptr;
 
@@ -144,12 +145,12 @@ fn isz main()
 				} while (num != 0);
 			case READ:
 				char c;
-				while (lbos::read_input_buf((&c)[:1]) == 0);
+				while (syscall::read_input_buf((&c)[:1]) == 0);
 				if (c == '\r') { memory[mem_ptr] = '\n'; }
 				else { memory[mem_ptr] = c; }
 				nextcase;
 			case PRINT:
-				lbos::printc(memory[mem_ptr]);
+				io::printc(memory[mem_ptr]);
 		}
 		program.@next();
 	}
@@ -178,16 +179,16 @@ fn void Instructions.append_bytes(&self, usz len, char* dat)
 {
 	if (self.blocks == 0)
 	{
-		self.items = (char*)lbos::alloc_blocks(1);
+		self.items = (char*)syscall::alloc_blocks(1);
 		self.blocks = 1;
 		self.items[:self.blocks * BLOCK_SIZE] = {};
 	}
 	else if (self.bytes + len >= self.blocks * BLOCK_SIZE)
 	{
 		usz new_blocks = self.blocks + 1;
-		char* new_ptr = (char*)lbos::alloc_blocks(new_blocks);
+		char* new_ptr = (char*)syscall::alloc_blocks(new_blocks);
 		new_ptr[:self.blocks * BLOCK_SIZE] = self.items[:self.blocks * BLOCK_SIZE];
-		lbos::free_blocks((MemoryBlock)self.items, self.blocks);
+		syscall::free_blocks((MemoryBlock)self.items, self.blocks);
 		self.items = new_ptr;
 		self.blocks = new_blocks;
 	}
@@ -219,8 +220,7 @@ macro Instruction* Instructions.@get_ref(#self, usz #idx) @operator(&[]) => #sel
 */
 
 
-// TODO: making these `@bigendian` causes a compiler assert (with this as char and InstructionGrouped as a ushort)
-bitstruct Instruction : char // @bigendian
+bitstruct Instruction : char
 {
 	InstructionType type : 0..2;
 	bool large : 3;
@@ -237,9 +237,6 @@ const MAX_SMALL_GROUP = (1 << 4) - 1;
 const MAX_LARGE_GROUP = (1 << 12) - 1;
 $assert $defined((InstructionGrouped){.count = MAX_LARGE_GROUP}); // && !$defined((InstructionGrouped){.count = MAX_LARGE_GROUP + 1});
 $assert $defined((Instruction){.count = MAX_SMALL_GROUP}); // && !$defined((InstructionGrouped){.count = MAX_SMALL_GROUP + 1});
-
-// TODO: this segfaults the compiler:
-// $assert ((InstructionGrouped)ushort.max).count == MAX_GROUP;
 
 enum InstructionType : char (char c, bool groupable)
 {
@@ -282,7 +279,6 @@ macro div_ceil(a, b) => a / b + (a % b == 0 ? 0 : 1);
 
 module common; // I cannot use std::core::builtin because with `--emit-stdlib=no` it deletes the function impls
 import std::math;
-import liblbos;
 
 fn String xtoa(char[] buf, usz num) @builtin
 {

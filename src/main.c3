@@ -73,13 +73,13 @@ fn isz main()
 		{
 			if (inst.groupable)
 			{
-				if (prev == c && program.@last(InstructionCountable).count < CountType.max)
+				if (prev == c && program.@last(InstructionGrouped).count < MAX_GROUP)
 				{
-					program.@last(InstructionCountable).count ++;
+					program.@last(InstructionGrouped).count ++;
 				}
 				else
 				{
-					program.@append((InstructionCountable){{inst}, 1});
+					program.@append((InstructionGrouped){inst, 1});
 				}
 			}
 			else
@@ -106,28 +106,30 @@ fn isz main()
 	while (program.idx < program.bytes)
 	{
 		Instruction* curr = program.@curr();
-		/*lbos::print({curr.type.c, ' '});
+/*		lbos::print(xtoa((char[3]){}, curr.type.ordinal));
+		lbos::print(" ");
+		// lbos::print({curr.type.c, ' '});
 		if (curr.type.groupable)
 		{
-			lbos::print(xtoa((char[20]){}, ((InstructionCountable*)curr).count));
+			lbos::print(xtoa((char[20]){}, ((InstructionGrouped*)curr).count));
 		}
-		lbos::print("\n");
+		lbos::print("\n");*/
 		// lbos::println(xtoa((char[20]){}, program.idx));
-		if (curr.type == PRINT)
+		/*if (curr.type == PRINT)
 		{
 			lbos::print("PRINT\n");
 		}*/
-		
+
 		switch (curr.type)
 		{
 			case ADD:
-				memory[mem_ptr] = (char)(memory[mem_ptr] + ((InstructionCountable*)curr).count);
+				memory[mem_ptr] = (char)(memory[mem_ptr] + ((InstructionGrouped*)curr).count);
 			case SUB:
-				memory[mem_ptr] = (char)(memory[mem_ptr] - ((InstructionCountable*)curr).count);
+				memory[mem_ptr] = (char)(memory[mem_ptr] - ((InstructionGrouped*)curr).count);
 			case NEXT:
-				mem_ptr = (mem_ptr + ((InstructionCountable*)curr).count) % (MEM_SIZE - 1);
+				mem_ptr = (mem_ptr + ((InstructionGrouped*)curr).count) % (MEM_SIZE - 1);
 			case PREV:
-				mem_ptr = (mem_ptr - ((InstructionCountable*)curr).count) % (MEM_SIZE - 1);
+				mem_ptr = (mem_ptr - ((InstructionGrouped*)curr).count) % (MEM_SIZE - 1);
 			case LOOP_START:
 				if (memory[mem_ptr] != 0) break;
 				usz num = 1;
@@ -190,7 +192,7 @@ fn void Instructions.append_bytes(&self, usz len, char* dat)
 		self.blocks = 1;
 		self.items[:self.blocks * BLOCK_SIZE] = {};
 	}
-	else if (self.bytes + len >= self.blocks * BLOCK_SIZE)
+	else if (self.bytes + len > self.blocks * BLOCK_SIZE)
 	{
 		usz new_blocks = self.blocks + 1;
 		char* new_ptr = (char*)lbos::alloc_blocks(new_blocks);
@@ -199,7 +201,7 @@ fn void Instructions.append_bytes(&self, usz len, char* dat)
 		self.items = new_ptr;
 		self.blocks = new_blocks;
 	}
-	((char*)self.items + self.bytes)[:len] = dat[:len];
+	(self.items + self.bytes)[:len] = dat[:len];
 	self.bytes += len;
 }
 
@@ -213,13 +215,13 @@ macro void Instructions.@set(#self, usz #idx, Instruction #val) @operator([]=) =
 */
 macro Instruction* Instructions.@next(#self)
 {
-	#self.idx += Instruction.sizeof + #self.@curr().type.group_size;
+	#self.idx += #self.@curr().type.groupable ? InstructionGrouped.sizeof : Instruction.sizeof;
 	return (Instruction*)(#self.items + #self.idx);
 }
 
 macro Instruction* Instructions.@prev(#self)
 {
-	#self.idx -= Instruction.sizeof + #self.@curr().type.group_size;
+	#self.idx -= #self.@curr().type.groupable ? InstructionGrouped.sizeof : Instruction.sizeof;
 	return (Instruction*)(#self.items + #self.idx);
 }
 
@@ -237,18 +239,27 @@ macro Instructions.@last(#self, $Type) => ($Type*)((#self.items + #self.bytes) -
 macro Instruction* Instructions.@get_ref(#self, usz #idx) @operator(&[]) => #self.items[#idx];
 */
 
-struct Instruction
+
+// TODO: making these `@bigendian` causes a compiler assert (with this as char and InstructionGrouped as a ushort)
+// TODO: don't group things unless they have a repeat by adding a bool to `Instruction`
+bitstruct Instruction : char // @bigendian
 {
-	InstructionType type;
+	InstructionType type : 0..2;
 }
 
-alias CountType = ushort;
 // TODO: split up even further using a 1 bit bool in a bitstruct that says whether there is 1 or 2 bytes of repeats
-struct InstructionCountable @packed// Base
+bitstruct InstructionGrouped : ushort @align(1) // @littleendian
 {
-	inline Instruction base;
-	CountType count;
+	InstructionType type : 0..2;
+	ushort count : 3..15;
 }
+// const MAX_GROUP = (1 << 13) - 1;
+const MAX_GROUP = (1 << 13) - 1;
+$assert $defined((InstructionGrouped){.count = MAX_GROUP}); // && !$defined((InstructionGrouped){.count = MAX_GROUP + 1});
+
+// TODO: this segfaults the compiler:
+// $assert ((InstructionGrouped)ushort.max).count == MAX_GROUP;
+
 
 /*// epic
 struct Instruction // @packed
@@ -261,17 +272,16 @@ struct Instruction // @packed
 		uint count : 0..23;
 	}*/
 }*/
-
-enum InstructionType : char (char c, bool groupable, usz group_size)
+enum InstructionType : char (char c, bool groupable)
 {
-	NEXT       = { '>', true,  CountType.sizeof },
-	PREV       = { '<', true,  CountType.sizeof },
-	ADD        = { '+', true,  CountType.sizeof },
-	SUB        = { '-', true,  CountType.sizeof },
-	PRINT      = { '.', false, 0 }, // TODO: implement repeats for these 2
-	READ       = { ',', false, 0 },  // ^
-	LOOP_START = { '[', false, 0 },
-	LOOP_END   = { ']', false, 0 },
+	NEXT       = { '>', true  },
+	PREV       = { '<', true  },
+	ADD        = { '+', true  },
+	SUB        = { '-', true  },
+	PRINT      = { '.', false }, // TODO: implement repeats for these 2
+	READ       = { ',', false },  // ^
+	LOOP_START = { '[', false },
+	LOOP_END   = { ']', false },
 	// NEXT = { 0xff, false },
 }
 

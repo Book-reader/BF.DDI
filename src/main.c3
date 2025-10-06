@@ -66,27 +66,54 @@ fn isz main()
 
 	// char prev_prev;
 	Instructions program;
-	char prev;
+	// char prev;
+	InstructionType prev;
+	ushort prev_repeats;
 	while (try c = file.read_byte())
 	{
 		foreach (inst : InstructionType.values) if (c == inst.c)
 		{
 			if (inst.groupable)
 			{
-				if (prev == c && program.@last(InstructionGrouped).count < MAX_GROUP)
+				if (prev == inst)
 				{
-					program.@last(InstructionGrouped).count ++;
+					if (prev_repeats == MAX_LARGE_GROUP)
+					{
+						program.@append((InstructionGrouped){prev, true, prev_repeats});
+						prev_repeats = 0;
+					}
+					prev_repeats ++;
 				}
 				else
 				{
-					program.@append((InstructionGrouped){inst, 1});
+					if (prev_repeats > 0) switch
+					{
+						case prev_repeats <= MAX_SMALL_GROUP:
+							program.@append((Instruction){prev, false, prev_repeats});
+						default:
+							program.@append((InstructionGrouped){prev, true, prev_repeats});
+							
+					}
+					prev_repeats = 1;
+					// program.@append((Instruction){inst, false, 1});
 				}
 			}
 			else
 			{
-				program.@append((Instruction){inst});
+				assert (prev_repeats <= MAX_SMALL_GROUP);
+				// if (prev_repeats > 0) program.@append((Instruction){prev, false, prev_repeats});
+				if (prev_repeats > 0) switch
+				{
+					case prev_repeats <= MAX_SMALL_GROUP:
+						program.@append((Instruction){prev, false, prev_repeats});
+					default:
+						program.@append((InstructionGrouped){prev, true, prev_repeats});
+						
+				}
+				prev_repeats = 0;
+				program.@append((Instruction){inst, false, 1});
 			}
-			prev = c;
+			prev = inst;
 			// lbos::printc(c);
 			continue;
 		}
@@ -106,12 +133,12 @@ fn isz main()
 	while (program.idx < program.bytes)
 	{
 		Instruction* curr = program.@curr();
-/*		lbos::print(xtoa((char[3]){}, curr.type.ordinal));
-		lbos::print(" ");
-		// lbos::print({curr.type.c, ' '});
+		// lbos::print(xtoa((char[3]){}, curr.type.ordinal));
+		// lbos::print(" ");
+/*		lbos::print({curr.type.c, ' '});
 		if (curr.type.groupable)
 		{
-			lbos::print(xtoa((char[20]){}, ((InstructionGrouped*)curr).count));
+			lbos::print(xtoa((char[20]){}, curr.repeats()));
 		}
 		lbos::print("\n");*/
 		// lbos::println(xtoa((char[20]){}, program.idx));
@@ -123,13 +150,13 @@ fn isz main()
 		switch (curr.type)
 		{
 			case ADD:
-				memory[mem_ptr] = (char)(memory[mem_ptr] + ((InstructionGrouped*)curr).count);
+				memory[mem_ptr] = (char)(memory[mem_ptr] + curr.repeats());
 			case SUB:
-				memory[mem_ptr] = (char)(memory[mem_ptr] - ((InstructionGrouped*)curr).count);
+				memory[mem_ptr] = (char)(memory[mem_ptr] - curr.repeats());
 			case NEXT:
-				mem_ptr = (mem_ptr + ((InstructionGrouped*)curr).count) % (MEM_SIZE - 1);
+				mem_ptr = (mem_ptr + curr.repeats()) % (MEM_SIZE - 1);
 			case PREV:
-				mem_ptr = (mem_ptr - ((InstructionGrouped*)curr).count) % (MEM_SIZE - 1);
+				mem_ptr = (mem_ptr - curr.repeats()) % (MEM_SIZE - 1);
 			case LOOP_START:
 				if (memory[mem_ptr] != 0) break;
 				usz num = 1;
@@ -169,6 +196,8 @@ char[MEM_SIZE] memory;
 // TODO: this is an awful hack, maybe @noalias doesn't work correctly on slices? if so that's probably a bug
 // macro void @noalias_copy(#a @noalias, #b @noalias, #len) => memcpy((char*)#a, (char*)#b, #len * $typeof(#a).inner.sizeof) @noinline;// #a[:#len] = #b[:#len];
 
+macro ushort Instruction.repeats(&self) => self.large ? ((InstructionGrouped*)self).count : self.count;
+
 struct Instructions
 {
 	char*/*[]*/ items;
@@ -192,7 +221,7 @@ fn void Instructions.append_bytes(&self, usz len, char* dat)
 		self.blocks = 1;
 		self.items[:self.blocks * BLOCK_SIZE] = {};
 	}
-	else if (self.bytes + len > self.blocks * BLOCK_SIZE)
+	else if (self.bytes + len >= self.blocks * BLOCK_SIZE)
 	{
 		usz new_blocks = self.blocks + 1;
 		char* new_ptr = (char*)lbos::alloc_blocks(new_blocks);
@@ -215,13 +244,13 @@ macro void Instructions.@set(#self, usz #idx, Instruction #val) @operator([]=) =
 */
 macro Instruction* Instructions.@next(#self)
 {
-	#self.idx += #self.@curr().type.groupable ? InstructionGrouped.sizeof : Instruction.sizeof;
+	#self.idx += /*#self.@curr().type.groupable && */#self.@curr().large ? InstructionGrouped.sizeof : Instruction.sizeof;
 	return (Instruction*)(#self.items + #self.idx);
 }
 
 macro Instruction* Instructions.@prev(#self)
 {
-	#self.idx -= #self.@curr().type.groupable ? InstructionGrouped.sizeof : Instruction.sizeof;
+	#self.idx -= /*#self.@curr().type.groupable && */#self.@curr().large ? InstructionGrouped.sizeof : Instruction.sizeof;
 	return (Instruction*)(#self.items + #self.idx);
 }
 
@@ -231,7 +260,7 @@ macro Instruction* Instructions.@curr(#self)
 }
 
 
-macro Instructions.@last(#self, $Type) => ($Type*)((#self.items + #self.bytes) - $Type.sizeof);
+// macro Instructions.@last(#self, $Type) => ($Type*)((#self.items + #self.bytes) - $Type.sizeof);
 
 // TODO: this causes the error `undefined reference to .tempglobal`
 /*
@@ -245,17 +274,22 @@ macro Instruction* Instructions.@get_ref(#self, usz #idx) @operator(&[]) => #sel
 bitstruct Instruction : char // @bigendian
 {
 	InstructionType type : 0..2;
+	bool large : 3;
+	ushort count : 4..7;
 }
 
 // TODO: split up even further using a 1 bit bool in a bitstruct that says whether there is 1 or 2 bytes of repeats
 bitstruct InstructionGrouped : ushort @align(1) // @littleendian
 {
 	InstructionType type : 0..2;
-	ushort count : 3..15;
+	bool large : 3;
+	ushort count : 4..15;
 }
 // const MAX_GROUP = (1 << 13) - 1;
-const MAX_GROUP = (1 << 13) - 1;
-$assert $defined((InstructionGrouped){.count = MAX_GROUP}); // && !$defined((InstructionGrouped){.count = MAX_GROUP + 1});
+const MAX_SMALL_GROUP = (1 << 4) - 1;
+const MAX_LARGE_GROUP = (1 << 12) - 1;
+$assert $defined((InstructionGrouped){.count = MAX_LARGE_GROUP}); // && !$defined((InstructionGrouped){.count = MAX_LARGE_GROUP + 1});
+$assert $defined((Instruction){.count = MAX_SMALL_GROUP}); // && !$defined((InstructionGrouped){.count = MAX_SMALL_GROUP + 1});
 
 // TODO: this segfaults the compiler:
 // $assert ((InstructionGrouped)ushort.max).count == MAX_GROUP;

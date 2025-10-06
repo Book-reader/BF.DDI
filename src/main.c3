@@ -235,8 +235,8 @@ bitstruct InstructionGrouped : ushort @align(1)
 }
 const MAX_SMALL_GROUP = (1 << 4) - 1;
 const MAX_LARGE_GROUP = (1 << 12) - 1;
-$assert $defined((InstructionGrouped){.count = MAX_LARGE_GROUP}); // && !$defined((InstructionGrouped){.count = MAX_LARGE_GROUP + 1});
-$assert $defined((Instruction){.count = MAX_SMALL_GROUP}); // && !$defined((InstructionGrouped){.count = MAX_SMALL_GROUP + 1});
+$assert $defined((InstructionGrouped){.count = MAX_LARGE_GROUP}) && !$defined((InstructionGrouped){.count = MAX_LARGE_GROUP + 1});
+$assert $defined((Instruction){.count = MAX_SMALL_GROUP}) && !$defined((Instruction){.count = MAX_SMALL_GROUP + 1});
 
 enum InstructionType : char (char c, bool groupable)
 {

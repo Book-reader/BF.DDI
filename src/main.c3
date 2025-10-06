@@ -95,13 +95,10 @@ fn isz main()
 							
 					}
 					prev_repeats = 1;
-					// program.@append((Instruction){inst, false, 1});
 				}
 			}
 			else
 			{
-				assert (prev_repeats <= MAX_SMALL_GROUP);
-				// if (prev_repeats > 0) program.@append((Instruction){prev, false, prev_repeats});
 				if (prev_repeats > 0) switch
 				{
 					case prev_repeats <= MAX_SMALL_GROUP:

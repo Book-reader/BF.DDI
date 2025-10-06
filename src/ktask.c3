@@ -92,7 +92,7 @@ fn void query(KTaskRequest* req)
 	MemoryBlock ret = liblbos::wait_for_notification();
 	if ((uptr)ret != (uptr)req)
 	{
-		liblbos::print("ktask failed to respond properly!\n");
+		liblbos::print("ktask err!"/*"ktask failed to respond properly!\n"*/);
 	}
 }
 
